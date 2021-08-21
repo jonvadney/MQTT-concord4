@@ -110,10 +110,11 @@ def send_mqtt_update(topic, value):
     topic = 'concord/'+topic
     logger('TX -> '+str(config.HOST)+':'+str(config.PORT)+' - '+topic+' - '+value)
 
-    try:
-        publish.single(topic, value, hostname=config.HOST, port=config.PORT, retain=True, auth = {'username':config.MQTTUSER.decode('base64'),'password':config.MQTTPASSWORD.decode('base64')})
-    except:
-        logger("MQTT failed to publish message...")
+    if (config.MQTT_ENABLED):
+        try:
+            publish.single(topic, value, hostname=config.HOST, port=config.PORT, retain=True, auth = {'username':config.MQTTUSER.decode('base64'),'password':config.MQTTPASSWORD.decode('base64')})
+        except:
+            logger("MQTT failed to publish message...")
 
 def zonekey(zoneDev):
     """ Return internal key for supplied Indigo zone device. """
@@ -222,11 +223,15 @@ class Concord4ServerConfig():
 
         self.SERIALPORT = self.read_config_var('main', 'serialport', '', 'str')
         self.LOGLEVEL = self.read_config_var('main', 'loglevel', '', 'str')
-        self.HOST = self.read_config_var('main', 'host', '', 'str')
-        self.PORT = self.read_config_var('main', 'port', 1883, 'int')
+
+        self.EMAIL_ENABLED = self.read_config_var('main', 'email_enabled', False, 'bool')
         self.EMAILSENDER = self.read_config_var('main', 'emailsender', '', 'str')
         self.EMAILPASSWORD = self.read_config_var('main', 'emailpassword', '', 'str')
         self.EMAILRECIPIENT = self.read_config_var('main', 'emailrecipient', '', 'str')
+
+        self.MQTT_ENABLED = self.read_config_var('main', 'mqtt_enabled', False, 'bool')
+        self.HOST = self.read_config_var('main', 'host', '', 'str')
+        self.PORT = self.read_config_var('main', 'port', 1883, 'int')
         self.MQTTUSER = self.read_config_var('main', 'mqttuser', '', 'str')
         self.MQTTPASSWORD = self.read_config_var('main', 'mqttpassword', '', 'str')
 
@@ -319,7 +324,10 @@ class ConcordSvr(object):
             email_message = "NEW STATE: " + str(eventInfo['zone_state']) + "\nPREVIOUS STATE: " + str(eventInfo['prev_zone_state']) + "\nCOMMAND: " + str(eventInfo['command'] + "\nDATE: " + str(event_time))
             log.info("Sending Email... ")
             log.debug("Email Contents:" + email_subject + "\n" + email_message)
-            send_email(config.EMAILSENDER.decode('base64'), config.EMAILPASSWORD.decode('base64'), config.EMAILRECIPIENT.decode('base64'), email_subject, email_message)
+            if (config.EMAIL_ENABLED):
+                send_email(config.EMAILSENDER.decode('base64'), config.EMAILPASSWORD.decode('base64'), config.EMAILRECIPIENT.decode('base64'), email_subject, email_message)
+            else: 
+                log.info("Email disabled, skipping")
 
             # Update MQTT
             self.updateStateOnMQTT('alarm','triggered')
@@ -788,6 +796,9 @@ class ConcordMQTT(object):
         self.hasConnectedOnce = False
 
     def startup(self):
+        if (not self._config.MQTT_ENABLED):
+            return
+
         self.client = mqtt.Client()
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
